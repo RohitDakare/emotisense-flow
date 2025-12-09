@@ -21,7 +21,11 @@ const reflectionPrompts = [
   "What's one small thing that could help?",
 ];
 
-export function FeelHealRoom() {
+interface FeelHealRoomProps {
+  onComplete?: () => void;
+}
+
+export function FeelHealRoom({ onComplete }: FeelHealRoomProps = {}) {
   const { currentMood } = useMood();
   const [releaseText, setReleaseText] = useState('');
   const [isReleasing, setIsReleasing] = useState(false);
@@ -42,6 +46,7 @@ export function FeelHealRoom() {
       toast.success('Released! Let it go... 🍃', {
         description: 'Your thoughts have been processed and released.',
       });
+      onComplete?.();
     }, 1000);
   };
 

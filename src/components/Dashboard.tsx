@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Heart, Gamepad2, BarChart3, Plus, Sparkles } from 'lucide-react';
+import { Calendar, Heart, Gamepad2, BarChart3, Plus, Sparkles, LogOut, Bell, Castle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useMood, moodEmojis, MoodType } from '@/lib/mood-context';
+import { useAuth } from '@/hooks/useAuth';
 import { CalendarView } from './CalendarView';
 import { FeelHealRoom } from './FeelHealRoom';
 import { CognitiveQuests } from './CognitiveQuests';
 import { WeeklyReport } from './WeeklyReport';
+import { ProductivityCastle } from './ProductivityCastle';
+import { WellnessReminders } from './WellnessReminders';
+import { AmbientSoundPlayer } from './AmbientSoundPlayer';
 
 type View = 'home' | 'calendar' | 'heal' | 'quests' | 'report';
 
@@ -34,12 +38,37 @@ const initialEvents: CalendarEvent[] = [
 ];
 
 export function Dashboard() {
-  const { currentMood } = useMood();
+  const { currentMood, moodHistory } = useMood();
+  const { signOut, user } = useAuth();
   const [view, setView] = useState<View>('home');
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [questsCompleted, setQuestsCompleted] = useState(() => {
+    const saved = localStorage.getItem('questsCompleted');
+    return saved ? parseInt(saved) : 0;
+  });
+  const [healSessions, setHealSessions] = useState(() => {
+    const saved = localStorage.getItem('healSessions');
+    return saved ? parseInt(saved) : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('questsCompleted', questsCompleted.toString());
+  }, [questsCompleted]);
+
+  useEffect(() => {
+    localStorage.setItem('healSessions', healSessions.toString());
+  }, [healSessions]);
 
   const addEvent = (event: Omit<CalendarEvent, 'id'>) => {
     setEvents(prev => [...prev, { ...event, id: Date.now().toString() }]);
+  };
+
+  const handleQuestComplete = () => {
+    setQuestsCompleted(prev => prev + 1);
+  };
+
+  const handleHealComplete = () => {
+    setHealSessions(prev => prev + 1);
   };
 
   const renderView = () => {
@@ -47,13 +76,20 @@ export function Dashboard() {
       case 'calendar':
         return <CalendarView events={events} onAddEvent={addEvent} />;
       case 'heal':
-        return <FeelHealRoom />;
+        return <FeelHealRoom onComplete={handleHealComplete} />;
       case 'quests':
-        return <CognitiveQuests />;
+        return <CognitiveQuests onQuestComplete={handleQuestComplete} />;
       case 'report':
         return <WeeklyReport />;
       default:
-        return <HomeView events={events} onNavigate={setView} />;
+        return (
+          <HomeView 
+            events={events} 
+            onNavigate={setView} 
+            questsCompleted={questsCompleted}
+            healSessions={healSessions}
+          />
+        );
     }
   };
 
@@ -67,11 +103,23 @@ export function Dashboard() {
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div>
             <h1 className="text-2xl font-bold text-gradient">MindFlow</h1>
-            <p className="text-sm text-muted-foreground">Your wellness companion</p>
+            <p className="text-sm text-muted-foreground">
+              Welcome, {user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Wellness Seeker'}
+            </p>
           </div>
-          <div className="flex items-center gap-2 glass px-4 py-2 rounded-full">
-            <span className="text-2xl">{moodEmojis[currentMood]}</span>
-            <span className="text-sm capitalize font-medium">{currentMood}</span>
+          <div className="flex items-center gap-2">
+            <div className="glass px-4 py-2 rounded-full flex items-center gap-2">
+              <span className="text-2xl">{moodEmojis[currentMood]}</span>
+              <span className="text-sm capitalize font-medium hidden sm:inline">{currentMood}</span>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={signOut}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <LogOut className="w-5 h-5" />
+            </Button>
           </div>
         </div>
       </motion.header>
@@ -79,6 +127,9 @@ export function Dashboard() {
       <main className="p-4 max-w-2xl mx-auto">
         {renderView()}
       </main>
+
+      {/* Ambient Sound Player */}
+      <AmbientSoundPlayer />
 
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border/50 p-2 z-50">
         <div className="flex justify-around max-w-2xl mx-auto">
@@ -101,7 +152,14 @@ export function Dashboard() {
   );
 }
 
-function HomeView({ events, onNavigate }: { events: CalendarEvent[]; onNavigate: (view: View) => void }) {
+interface HomeViewProps {
+  events: CalendarEvent[];
+  onNavigate: (view: View) => void;
+  questsCompleted: number;
+  healSessions: number;
+}
+
+function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeViewProps) {
   const { currentMood, moodHistory } = useMood();
 
   const todayMoods = moodHistory.filter(entry => {
@@ -109,6 +167,9 @@ function HomeView({ events, onNavigate }: { events: CalendarEvent[]; onNavigate:
     const entryDate = new Date(entry.timestamp);
     return entryDate.toDateString() === today.toDateString();
   });
+
+  const totalXp = todayMoods.length * 10 + healSessions * 20 + questsCompleted * 15;
+  const level = Math.floor(totalXp / 100) + 1;
 
   return (
     <motion.div
@@ -131,6 +192,15 @@ function HomeView({ events, onNavigate }: { events: CalendarEvent[]; onNavigate:
           </p>
         </CardContent>
       </Card>
+
+      {/* Productivity Castle */}
+      <ProductivityCastle
+        level={level}
+        xp={totalXp}
+        moodChecks={todayMoods.length}
+        healSessions={healSessions}
+        questsCompleted={questsCompleted}
+      />
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3">
@@ -168,6 +238,9 @@ function HomeView({ events, onNavigate }: { events: CalendarEvent[]; onNavigate:
           </Card>
         </motion.div>
       </div>
+
+      {/* Wellness Reminders */}
+      <WellnessReminders />
 
       {/* Upcoming Events Preview */}
       <Card className="glass border-0">

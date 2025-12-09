@@ -40,7 +40,11 @@ const puzzleData: PuzzleMatch[] = [
   { feeling: '😴 Drained', trigger: 'Overworking', solution: 'Take regular breaks', matched: false },
 ];
 
-export function CognitiveQuests() {
+interface CognitiveQuestsProps {
+  onQuestComplete?: () => void;
+}
+
+export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) {
   const [activeQuest, setActiveQuest] = useState<Quest>(null);
   const [score, setScore] = useState(0);
   const [balloons, setBalloons] = useState<Balloon[]>([]);
@@ -84,6 +88,7 @@ export function CognitiveQuests() {
     ));
     setScore(prev => prev + 10);
     setShowReframe(balloon.reframe);
+    onQuestComplete?.();
     
     setTimeout(() => {
       setShowReframe(null);
