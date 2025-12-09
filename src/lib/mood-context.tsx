@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import api from './api';
+import { useAuth } from '@/hooks/useAuth';
 
 export type MoodType = 'happy' | 'calm' | 'tired' | 'anxious' | 'neutral' | 'sad' | 'energetic';
 
@@ -30,29 +32,35 @@ const MoodContext = createContext<MoodContextType | undefined>(undefined);
 
 export function MoodProvider({ children }: { children: ReactNode }) {
   const [currentMood, setCurrentMood] = useState<MoodType>('neutral');
-  const [moodHistory, setMoodHistory] = useState<MoodEntry[]>(() => {
-    const saved = localStorage.getItem('moodHistory');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [moodHistory, setMoodHistory] = useState<MoodEntry[]>([]);
+  const { user } = useAuth();
 
   const theme = moodToTheme[currentMood];
 
   useEffect(() => {
-    localStorage.setItem('moodHistory', JSON.stringify(moodHistory));
-  }, [moodHistory]);
+    if (user) {
+      api.get('/moods').then((response) => {
+        setMoodHistory(response.data);
+      });
+    }
+  }, [user]);
 
   useEffect(() => {
     document.body.className = theme;
   }, [theme]);
 
   const addMoodEntry = (mood: MoodType, note?: string) => {
-    const entry: MoodEntry = {
-      mood,
-      timestamp: new Date(),
-      note,
-    };
-    setMoodHistory(prev => [...prev, entry]);
-    setCurrentMood(mood);
+    if (user) {
+      const entry = {
+        mood,
+        note,
+        userId: user.id,
+      };
+      api.post('/moods', entry).then((response) => {
+        setMoodHistory((prev) => [...prev, response.data]);
+        setCurrentMood(mood);
+      });
+    }
   };
 
   return (

@@ -5,15 +5,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { Sparkles, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Sparkles, Mail, Lock, User, ArrowRight } from 'lucide-react';
+import api from '@/lib/api';
 
-export default function Auth() {
+export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,13 +21,11 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { error } = await signIn(email, password);
-      if (error) {
-        toast.error('Invalid Credentials');
-      } else {
-        toast.success('Welcome back!');
-        navigate('/');
-      }
+      await api.post('/users', { name, email, password });
+      toast.success('Account created! Please sign in.');
+      navigate('/');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -54,13 +52,28 @@ export default function Auth() {
 
         <Card className="glass border-0">
           <CardHeader className="text-center pb-4">
-            <CardTitle>Welcome Back</CardTitle>
+            <CardTitle>Create Account</CardTitle>
             <CardDescription>
-              Sign in to continue your journey
+              Start your wellness journey today
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Name</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="Your name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
@@ -107,7 +120,7 @@ export default function Auth() {
                   />
                 ) : (
                   <>
-                    Sign In
+                    Create Account
                     <ArrowRight className="ml-2 w-4 h-4" />
                   </>
                 )}
@@ -117,10 +130,10 @@ export default function Auth() {
             <div className="mt-6 text-center">
               <button
                 type="button"
-                onClick={() => navigate('/signup')}
+                onClick={() => navigate('/')}
                 className="text-sm text-muted-foreground hover:text-primary transition-colors"
               >
-                Don't have an account? Sign up
+                Already have an account? Sign in
               </button>
             </div>
           </CardContent>

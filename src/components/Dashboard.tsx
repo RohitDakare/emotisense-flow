@@ -14,6 +14,7 @@ import { WellnessReminders } from './WellnessReminders';
 import { AmbientSoundPlayer } from './AmbientSoundPlayer';
 import { AIWellnessChat } from './AIWellnessChat';
 import { AIJournalAnalysis } from './AIJournalAnalysis';
+import api from '@/lib/api';
 
 type View = 'home' | 'calendar' | 'heal' | 'quests' | 'report' | 'journal';
 
@@ -33,17 +34,11 @@ interface CalendarEvent {
   tag: string;
 }
 
-const initialEvents: CalendarEvent[] = [
-  { id: '1', title: 'Team Meeting', time: '10:00 AM', predictedMood: 'anxious', tag: 'Energy Dip Likely' },
-  { id: '2', title: 'Lunch Break', time: '12:30 PM', predictedMood: 'happy', tag: 'Recharge Time' },
-  { id: '3', title: 'Project Review', time: '3:00 PM', predictedMood: 'neutral', tag: 'Focus Required' },
-];
-
 export function Dashboard() {
   const { currentMood, moodHistory } = useMood();
   const { signOut, user } = useAuth();
   const [view, setView] = useState<View>('home');
-  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [questsCompleted, setQuestsCompleted] = useState(() => {
     const saved = localStorage.getItem('questsCompleted');
     return saved ? parseInt(saved) : 0;
@@ -54,6 +49,14 @@ export function Dashboard() {
   });
 
   useEffect(() => {
+    if (user) {
+      api.get('/events').then((response) => {
+        setEvents(response.data);
+      });
+    }
+  }, [user]);
+
+  useEffect(() => {
     localStorage.setItem('questsCompleted', questsCompleted.toString());
   }, [questsCompleted]);
 
@@ -62,7 +65,9 @@ export function Dashboard() {
   }, [healSessions]);
 
   const addEvent = (event: Omit<CalendarEvent, 'id'>) => {
-    setEvents(prev => [...prev, { ...event, id: Date.now().toString() }]);
+    api.post('/events', event).then((response) => {
+      setEvents(prev => [...prev, response.data]);
+    });
   };
 
   const handleQuestComplete = () => {
@@ -87,9 +92,9 @@ export function Dashboard() {
         return <AIJournalAnalysis />;
       default:
         return (
-          <HomeView 
-            events={events} 
-            onNavigate={setView} 
+          <HomeView
+            events={events}
+            onNavigate={setView}
             questsCompleted={questsCompleted}
             healSessions={healSessions}
           />
@@ -108,7 +113,7 @@ export function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold text-gradient">MindFlow</h1>
             <p className="text-sm text-muted-foreground">
-              Welcome, {user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Wellness Seeker'}
+              Welcome, {user?.displayName || user?.email?.split('@')[0] || 'Wellness Seeker'}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -116,9 +121,9 @@ export function Dashboard() {
               <span className="text-2xl">{moodEmojis[currentMood]}</span>
               <span className="text-sm capitalize font-medium hidden sm:inline">{currentMood}</span>
             </div>
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={signOut}
               className="text-muted-foreground hover:text-foreground"
             >
@@ -190,7 +195,7 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
           <div className="absolute top-0 right-0 w-32 h-32 gradient-primary opacity-20 rounded-full blur-3xl" />
           <h2 className="text-xl font-semibold mb-2">Good to see you! {moodEmojis[currentMood]}</h2>
           <p className="text-muted-foreground">
-            You've logged {todayMoods.length} mood{todayMoods.length !== 1 ? 's' : ''} today. 
+            You've logged {todayMoods.length} mood{todayMoods.length !== 1 ? 's' : ''} today.
             {currentMood === 'happy' && ' Keep spreading that joy!'}
             {currentMood === 'tired' && ' Take it easy today.'}
             {currentMood === 'anxious' && ' Let\'s find some calm together.'}
@@ -212,7 +217,7 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3">
         <motion.div whileTap={{ scale: 0.98 }}>
-          <Card 
+          <Card
             className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
             onClick={() => onNavigate('heal')}
           >
@@ -229,7 +234,7 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
         </motion.div>
 
         <motion.div whileTap={{ scale: 0.98 }}>
-          <Card 
+          <Card
             className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
             onClick={() => onNavigate('quests')}
           >
@@ -268,7 +273,7 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
               transition={{ delay: index * 0.1 }}
               className="flex items-center gap-3 p-3 rounded-xl bg-background/50"
             >
-              <div 
+              <div
                 className="w-2 h-full min-h-[40px] rounded-full"
                 style={{ backgroundColor: `hsl(var(--mood-${event.predictedMood}))` }}
               />
@@ -285,7 +290,7 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
       </Card>
 
       {/* Weekly Insight Teaser */}
-      <Card 
+      <Card
         className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
         onClick={() => onNavigate('report')}
       >
