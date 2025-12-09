@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000', // Adjust if your backend runs on a different port
+  baseURL: 'http://localhost:3001', // Adjust if your backend runs on a different port
 });
 
 // Add a request interceptor to include the token in headers
