@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Camera, Sparkles, AlertCircle } from 'lucide-react';
+import { Camera, Sparkles, AlertCircle, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MoodType } from '@/lib/mood-context';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RealEmotionDetectorProps {
   onMoodDetected: (mood: MoodType) => void;
@@ -48,10 +49,13 @@ export function RealEmotionDetector({ onMoodDetected, onCancel }: RealEmotionDet
     return () => stopCamera();
   }, [startCamera, stopCamera]);
 
+  const [aiInsight, setAiInsight] = useState<string | null>(null);
+
   const analyzeEmotion = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     
     setIsAnalyzing(true);
+    setAiInsight(null);
 
     try {
       const video = videoRef.current;
@@ -65,73 +69,89 @@ export function RealEmotionDetector({ onMoodDetected, onCancel }: RealEmotionDet
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0);
 
-      // Get image data for simple analysis
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
+      // Convert to base64 for AI analysis
+      const imageBase64 = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-      // Simple brightness and color analysis for mood estimation
-      let totalBrightness = 0;
-      let redSum = 0;
-      let greenSum = 0;
-      let blueSum = 0;
-      const pixelCount = data.length / 4;
+      // Call AI for facial emotion analysis
+      const { data, error } = await supabase.functions.invoke('analyze-mood', {
+        body: {
+          imageBase64,
+          analysisType: 'facial'
+        }
+      });
 
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+      if (error) throw error;
+
+      if (data.mood) {
+        const detectedMood = data.mood as MoodType;
+        setAiInsight(data.insight || data.suggestion);
         
-        totalBrightness += (r + g + b) / 3;
-        redSum += r;
-        greenSum += g;
-        blueSum += b;
-      }
-
-      const avgBrightness = totalBrightness / pixelCount;
-      const avgRed = redSum / pixelCount;
-      const avgGreen = greenSum / pixelCount;
-      const avgBlue = blueSum / pixelCount;
-
-      // Simple heuristic-based mood detection
-      // In a real app, you'd use a proper ML model like face-api.js or TensorFlow.js
-      let detectedMood: MoodType;
-
-      // Analyze face region brightness and color temperature
-      const colorTemperature = (avgRed - avgBlue) / 255;
-      const brightness = avgBrightness / 255;
-
-      // Add some randomness to make it feel more dynamic
-      const random = Math.random();
-
-      if (brightness > 0.6 && colorTemperature > 0.1) {
-        // Well-lit, warm colors - likely positive
-        detectedMood = random > 0.5 ? 'happy' : 'energetic';
-      } else if (brightness > 0.5 && colorTemperature > 0) {
-        // Moderate lighting, slightly warm
-        detectedMood = random > 0.5 ? 'calm' : 'neutral';
-      } else if (brightness < 0.4) {
-        // Low light conditions
-        detectedMood = random > 0.5 ? 'tired' : 'calm';
-      } else if (colorTemperature < -0.1) {
-        // Cool colors
-        detectedMood = random > 0.3 ? 'neutral' : 'anxious';
+        stopCamera();
+        onMoodDetected(detectedMood);
       } else {
-        // Default
-        detectedMood = 'neutral';
+        throw new Error('Could not detect mood');
       }
-
-      // Simulate processing delay for UX
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      stopCamera();
-      onMoodDetected(detectedMood);
 
     } catch (err) {
-      console.error('Analysis error:', err);
-      setError('Failed to analyze. Please try again.');
+      console.error('AI Analysis error:', err);
+      // Fallback to simple heuristic if AI fails
+      fallbackAnalysis();
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const fallbackAnalysis = async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    let totalBrightness = 0;
+    let redSum = 0;
+    let blueSum = 0;
+    const pixelCount = data.length / 4;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      totalBrightness += (r + g + b) / 3;
+      redSum += r;
+      blueSum += b;
+    }
+
+    const avgBrightness = totalBrightness / pixelCount;
+    const colorTemperature = (redSum - blueSum) / pixelCount / 255;
+    const brightness = avgBrightness / 255;
+    const random = Math.random();
+
+    let detectedMood: MoodType;
+    if (brightness > 0.6 && colorTemperature > 0.1) {
+      detectedMood = random > 0.5 ? 'happy' : 'energetic';
+    } else if (brightness > 0.5 && colorTemperature > 0) {
+      detectedMood = random > 0.5 ? 'calm' : 'neutral';
+    } else if (brightness < 0.4) {
+      detectedMood = random > 0.5 ? 'tired' : 'calm';
+    } else if (colorTemperature < -0.1) {
+      detectedMood = random > 0.3 ? 'neutral' : 'anxious';
+    } else {
+      detectedMood = 'neutral';
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 500));
+    stopCamera();
+    onMoodDetected(detectedMood);
   };
 
   return (

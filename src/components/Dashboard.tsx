@@ -12,8 +12,10 @@ import { WeeklyReport } from './WeeklyReport';
 import { ProductivityCastle } from './ProductivityCastle';
 import { WellnessReminders } from './WellnessReminders';
 import { AmbientSoundPlayer } from './AmbientSoundPlayer';
+import { AIWellnessChat } from './AIWellnessChat';
+import { AIJournalAnalysis } from './AIJournalAnalysis';
 
-type View = 'home' | 'calendar' | 'heal' | 'quests' | 'report';
+type View = 'home' | 'calendar' | 'heal' | 'quests' | 'report' | 'journal';
 
 const navItems = [
   { id: 'home' as View, icon: Sparkles, label: 'Home' },
@@ -81,6 +83,8 @@ export function Dashboard() {
         return <CognitiveQuests onQuestComplete={handleQuestComplete} />;
       case 'report':
         return <WeeklyReport />;
+      case 'journal':
+        return <AIJournalAnalysis />;
       default:
         return (
           <HomeView 
@@ -130,6 +134,9 @@ export function Dashboard() {
 
       {/* Ambient Sound Player */}
       <AmbientSoundPlayer />
+
+      {/* AI Wellness Chat */}
+      <AIWellnessChat />
 
       <nav className="fixed bottom-0 left-0 right-0 glass border-t border-border/50 p-2 z-50">
         <div className="flex justify-around max-w-2xl mx-auto">

@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gamepad2, Trophy, Star, RefreshCw, Target, Puzzle } from 'lucide-react';
+import { Gamepad2, Trophy, Star, RefreshCw, Target, Puzzle, Zap, Brain, Heart, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
-type Quest = 'balloon' | 'puzzle' | null;
+type Quest = 'balloon' | 'puzzle' | 'breathing' | 'memory' | 'gratitude' | null;
 
 interface Balloon {
   id: number;
@@ -40,6 +41,17 @@ const puzzleData: PuzzleMatch[] = [
   { feeling: '😴 Drained', trigger: 'Overworking', solution: 'Take regular breaks', matched: false },
 ];
 
+const memoryCards = ['🌸', '🌊', '🌿', '☀️', '🦋', '🌙'];
+
+const gratitudePrompts = [
+  "Something that made you smile today",
+  "A person you're grateful for",
+  "A skill or ability you have",
+  "Something in nature you appreciate",
+  "A comfortable thing you enjoy",
+  "A challenge that helped you grow"
+];
+
 interface CognitiveQuestsProps {
   onQuestComplete?: () => void;
 }
@@ -51,6 +63,20 @@ export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) 
   const [showReframe, setShowReframe] = useState<string | null>(null);
   const [puzzleState, setPuzzleState] = useState(puzzleData);
   const [selectedFeeling, setSelectedFeeling] = useState<string | null>(null);
+  
+  // Breathing exercise state
+  const [breathPhase, setBreathPhase] = useState<'inhale' | 'hold' | 'exhale' | 'rest'>('inhale');
+  const [breathCount, setBreathCount] = useState(0);
+  const [breathTimer, setBreathTimer] = useState(4);
+  
+  // Memory game state
+  const [memoryGameCards, setMemoryGameCards] = useState<{id: number; emoji: string; flipped: boolean; matched: boolean}[]>([]);
+  const [flippedCards, setFlippedCards] = useState<number[]>([]);
+  const [memoryMoves, setMemoryMoves] = useState(0);
+  
+  // Gratitude game state
+  const [currentPrompt, setCurrentPrompt] = useState(0);
+  const [gratitudeAnswers, setGratitudeAnswers] = useState<string[]>([]);
 
   const startBalloonQuest = useCallback(() => {
     setActiveQuest('balloon');
@@ -111,6 +137,7 @@ export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) 
       ));
       setScore(prev => prev + 25);
       setSelectedFeeling(null);
+      onQuestComplete?.();
       
       if (puzzleState.filter(p => !p.matched).length === 1) {
         setTimeout(() => {
@@ -123,6 +150,126 @@ export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) 
       toast.error('Not quite right', {
         description: 'Try a different combination'
       });
+    }
+  };
+
+  // Breathing exercise
+  const startBreathingQuest = () => {
+    setActiveQuest('breathing');
+    setBreathPhase('inhale');
+    setBreathCount(0);
+    setBreathTimer(4);
+  };
+
+  useEffect(() => {
+    if (activeQuest !== 'breathing') return;
+    
+    const interval = setInterval(() => {
+      setBreathTimer(prev => {
+        if (prev <= 1) {
+          // Move to next phase
+          if (breathPhase === 'inhale') {
+            setBreathPhase('hold');
+            return 7;
+          } else if (breathPhase === 'hold') {
+            setBreathPhase('exhale');
+            return 8;
+          } else if (breathPhase === 'exhale') {
+            setBreathCount(c => c + 1);
+            if (breathCount >= 3) {
+              toast.success('🧘 Breathing Complete!', {
+                description: 'Great job! You completed 4 breathing cycles.'
+              });
+              onQuestComplete?.();
+              setActiveQuest(null);
+            }
+            setBreathPhase('inhale');
+            return 4;
+          }
+          return 4;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [activeQuest, breathPhase, breathCount, onQuestComplete]);
+
+  // Memory game
+  const startMemoryQuest = () => {
+    const shuffled = [...memoryCards, ...memoryCards]
+      .sort(() => Math.random() - 0.5)
+      .map((emoji, index) => ({ id: index, emoji, flipped: false, matched: false }));
+    setMemoryGameCards(shuffled);
+    setFlippedCards([]);
+    setMemoryMoves(0);
+    setActiveQuest('memory');
+  };
+
+  const handleCardFlip = (cardId: number) => {
+    if (flippedCards.length >= 2) return;
+    const card = memoryGameCards.find(c => c.id === cardId);
+    if (!card || card.flipped || card.matched) return;
+
+    const newCards = memoryGameCards.map(c => 
+      c.id === cardId ? { ...c, flipped: true } : c
+    );
+    setMemoryGameCards(newCards);
+    const newFlipped = [...flippedCards, cardId];
+    setFlippedCards(newFlipped);
+
+    if (newFlipped.length === 2) {
+      setMemoryMoves(prev => prev + 1);
+      const [first, second] = newFlipped;
+      const firstCard = newCards.find(c => c.id === first);
+      const secondCard = newCards.find(c => c.id === second);
+      
+      if (firstCard?.emoji === secondCard?.emoji) {
+        setMemoryGameCards(prev => prev.map(c => 
+          c.id === first || c.id === second ? { ...c, matched: true } : c
+        ));
+        setFlippedCards([]);
+        setScore(prev => prev + 20);
+        onQuestComplete?.();
+        
+        if (newCards.filter(c => !c.matched).length === 2) {
+          setTimeout(() => {
+            toast.success('🎉 Memory Complete!', {
+              description: `You matched all cards in ${memoryMoves + 1} moves!`
+            });
+          }, 500);
+        }
+      } else {
+        setTimeout(() => {
+          setMemoryGameCards(prev => prev.map(c => 
+            c.id === first || c.id === second ? { ...c, flipped: false } : c
+          ));
+          setFlippedCards([]);
+        }, 1000);
+      }
+    }
+  };
+
+  // Gratitude game
+  const startGratitudeQuest = () => {
+    setActiveQuest('gratitude');
+    setCurrentPrompt(0);
+    setGratitudeAnswers([]);
+  };
+
+  const submitGratitude = (answer: string) => {
+    if (!answer.trim()) return;
+    setGratitudeAnswers(prev => [...prev, answer]);
+    setScore(prev => prev + 15);
+    onQuestComplete?.();
+    
+    if (currentPrompt < gratitudePrompts.length - 1) {
+      setCurrentPrompt(prev => prev + 1);
+    } else {
+      toast.success('🙏 Gratitude Complete!', {
+        description: `You found ${gratitudeAnswers.length + 1} things to be grateful for!`
+      });
+      setTimeout(() => setActiveQuest(null), 1500);
     }
   };
 
@@ -178,9 +325,63 @@ export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) 
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-lg">Emotion Puzzles</h3>
-                    <p className="text-sm text-muted-foreground">Match feelings with triggers and solutions</p>
+                    <p className="text-sm text-muted-foreground">Match feelings with solutions</p>
                   </div>
                   <Star className="w-5 h-5 text-accent" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
+              onClick={startBreathingQuest}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 rounded-2xl bg-primary/20">
+                    <Zap className="w-8 h-8 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">4-7-8 Breathing</h3>
+                    <p className="text-sm text-muted-foreground">Calming breathing exercise</p>
+                  </div>
+                  <Star className="w-5 h-5 text-primary" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
+              onClick={startMemoryQuest}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 rounded-2xl bg-accent/50">
+                    <Brain className="w-8 h-8 text-accent-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">Mindful Memory</h3>
+                    <p className="text-sm text-muted-foreground">Match calming symbols</p>
+                  </div>
+                  <Star className="w-5 h-5 text-accent" />
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card 
+              className="glass border-0 cursor-pointer hover:bg-primary/5 transition-colors"
+              onClick={startGratitudeQuest}
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 rounded-2xl bg-primary/30">
+                    <Heart className="w-8 h-8 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-lg">Gratitude Journey</h3>
+                    <p className="text-sm text-muted-foreground">Find things to appreciate</p>
+                  </div>
+                  <Star className="w-5 h-5 text-primary" />
                 </div>
               </CardContent>
             </Card>
@@ -348,7 +549,185 @@ export function CognitiveQuests({ onQuestComplete }: CognitiveQuestsProps = {}) 
             </Card>
           </motion.div>
         )}
+
+        {activeQuest === 'breathing' && (
+          <motion.div
+            key="breathing"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Timer className="w-5 h-5 text-primary" />
+                <span className="font-semibold">Cycle: {breathCount + 1}/4</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setActiveQuest(null)}>
+                Exit Quest
+              </Button>
+            </div>
+
+            <Card className="glass border-0">
+              <CardContent className="p-8 text-center space-y-6">
+                <motion.div
+                  animate={{
+                    scale: breathPhase === 'inhale' ? 1.3 : breathPhase === 'exhale' ? 0.7 : 1,
+                  }}
+                  transition={{ duration: breathPhase === 'inhale' ? 4 : breathPhase === 'exhale' ? 8 : 0.3 }}
+                  className="w-32 h-32 mx-auto rounded-full gradient-primary flex items-center justify-center"
+                >
+                  <span className="text-4xl text-primary-foreground font-bold">{breathTimer}</span>
+                </motion.div>
+
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-semibold capitalize">{breathPhase}</h3>
+                  <p className="text-muted-foreground">
+                    {breathPhase === 'inhale' && 'Breathe in slowly through your nose'}
+                    {breathPhase === 'hold' && 'Hold your breath gently'}
+                    {breathPhase === 'exhale' && 'Breathe out slowly through your mouth'}
+                  </p>
+                </div>
+
+                <Progress value={(breathCount / 4) * 100} className="h-2" />
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {activeQuest === 'memory' && (
+          <motion.div
+            key="memory"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-primary" />
+                  <span className="font-semibold">Score: {score}</span>
+                </div>
+                <span className="text-sm text-muted-foreground">Moves: {memoryMoves}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setActiveQuest(null)}>
+                Exit Quest
+              </Button>
+            </div>
+
+            <Card className="glass border-0">
+              <CardContent className="p-4">
+                <div className="grid grid-cols-4 gap-2">
+                  {memoryGameCards.map((card) => (
+                    <motion.button
+                      key={card.id}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleCardFlip(card.id)}
+                      disabled={card.matched || card.flipped}
+                      className={`aspect-square rounded-xl text-2xl flex items-center justify-center transition-all ${
+                        card.flipped || card.matched
+                          ? 'bg-primary/20'
+                          : 'bg-muted/50 hover:bg-muted'
+                      }`}
+                    >
+                      {(card.flipped || card.matched) ? card.emoji : '?'}
+                    </motion.button>
+                  ))}
+                </div>
+
+                {memoryGameCards.every(c => c.matched) && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-center p-6 mt-4"
+                  >
+                    <Trophy className="w-12 h-12 text-primary mx-auto mb-2" />
+                    <h3 className="text-lg font-semibold">Perfect Memory!</h3>
+                    <Button 
+                      onClick={startMemoryQuest}
+                      className="mt-4 gradient-primary text-primary-foreground border-0"
+                    >
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Play Again
+                    </Button>
+                  </motion.div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {activeQuest === 'gratitude' && (
+          <motion.div
+            key="gratitude"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Heart className="w-5 h-5 text-primary" />
+                <span className="font-semibold">{currentPrompt + 1}/{gratitudePrompts.length}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setActiveQuest(null)}>
+                Exit Quest
+              </Button>
+            </div>
+
+            <Card className="glass border-0">
+              <CardContent className="p-6 space-y-4">
+                <div className="text-center">
+                  <h3 className="text-lg font-semibold mb-2">I'm grateful for...</h3>
+                  <p className="text-primary font-medium">{gratitudePrompts[currentPrompt]}</p>
+                </div>
+
+                <GratitudeInput onSubmit={submitGratitude} />
+
+                {gratitudeAnswers.length > 0 && (
+                  <div className="space-y-2 pt-4 border-t border-border/50">
+                    <p className="text-sm text-muted-foreground">Your gratitude list:</p>
+                    {gratitudeAnswers.map((answer, i) => (
+                      <div key={i} className="flex items-center gap-2 text-sm">
+                        <Star className="w-4 h-4 text-primary" />
+                        <span>{answer}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+function GratitudeInput({ onSubmit }: { onSubmit: (answer: string) => void }) {
+  const [value, setValue] = useState('');
+  
+  const handleSubmit = () => {
+    if (value.trim()) {
+      onSubmit(value.trim());
+      setValue('');
+    }
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+        placeholder="Type something you're grateful for..."
+        className="flex-1 px-4 py-2 rounded-xl bg-muted/50 border-0 focus:ring-2 focus:ring-primary outline-none"
+      />
+      <Button onClick={handleSubmit} className="gradient-primary border-0">
+        <Star className="w-4 h-4" />
+      </Button>
+    </div>
   );
 }
