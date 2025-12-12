@@ -1,29 +1,107 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart3, TrendingUp, Calendar, Target, Lightbulb } from 'lucide-react';
+import { BarChart3, TrendingUp, Calendar, Target, Lightbulb, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
 import { useMood, MoodType, moodColors, moodEmojis } from '@/lib/mood-context';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+
+interface Insight {
+  icon: typeof TrendingUp;
+  title: string;
+  description: string;
+  color: string;
+}
 
 export function WeeklyReport() {
   const { moodHistory } = useMood();
+  const { user } = useAuth();
+  const [questCount, setQuestCount] = useState(0);
+  const [releaseCount, setReleaseCount] = useState(0);
+  const [aiInsights, setAiInsights] = useState<Insight[]>([]);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+
+  // Fetch real data from Supabase
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+
+      // Fetch quest progress
+      const { data: quests } = await supabase
+        .from('quest_progress')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (quests) {
+        setQuestCount(quests.length);
+      }
+
+      // Get release count from localStorage (heal sessions)
+      const healSessions = localStorage.getItem('healSessions');
+      setReleaseCount(healSessions ? parseInt(healSessions) : 0);
+    };
+
+    fetchStats();
+  }, [user]);
+
+  // Generate AI insights based on mood history
+  useEffect(() => {
+    const generateInsights = async () => {
+      if (moodHistory.length < 2) {
+        setAiInsights([
+          {
+            icon: TrendingUp,
+            title: "Getting Started",
+            description: "Log more moods to see personalized insights",
+            color: "text-primary"
+          }
+        ]);
+        return;
+      }
+
+      setLoadingInsights(true);
+      try {
+        const moodSummary = moodHistory.slice(0, 20).map(m => ({
+          mood: m.mood,
+          time: new Date(m.timestamp).toLocaleTimeString('en-US', { hour: '2-digit' })
+        }));
+
+        const { data, error } = await supabase.functions.invoke('analyze-mood', {
+          body: {
+            userInput: `Analyze these mood entries and provide 3 brief insights: ${JSON.stringify(moodSummary)}`,
+            analysisType: 'chat'
+          }
+        });
+
+        if (!error && data?.response) {
+          // Parse insights from AI response
+          const insights: Insight[] = [
+            {
+              icon: TrendingUp,
+              title: "Mood Pattern",
+              description: data.response.slice(0, 100) + '...',
+              color: "text-primary"
+            }
+          ];
+          setAiInsights(insights);
+        }
+      } catch (err) {
+        console.error('Failed to generate insights:', err);
+      } finally {
+        setLoadingInsights(false);
+      }
+    };
+
+    generateInsights();
+  }, [moodHistory]);
 
   const moodDistribution = useMemo(() => {
     const counts: Record<MoodType, number> = {
       happy: 0, calm: 0, tired: 0, anxious: 0, neutral: 0, sad: 0, energetic: 0
     };
 
-    // Use actual history or generate sample data
-    const data = moodHistory.length > 0 ? moodHistory : [
-      { mood: 'happy' as MoodType }, { mood: 'happy' as MoodType },
-      { mood: 'calm' as MoodType }, { mood: 'calm' as MoodType }, { mood: 'calm' as MoodType },
-      { mood: 'neutral' as MoodType }, { mood: 'neutral' as MoodType },
-      { mood: 'tired' as MoodType },
-      { mood: 'anxious' as MoodType },
-      { mood: 'energetic' as MoodType },
-    ];
-
-    data.forEach(entry => {
+    moodHistory.forEach(entry => {
       counts[entry.mood]++;
     });
 
@@ -39,36 +117,57 @@ export function WeeklyReport() {
 
   const weeklyTrend = useMemo(() => {
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    return days.map((day, index) => ({
-      day,
-      positive: Math.floor(Math.random() * 5) + 2,
-      neutral: Math.floor(Math.random() * 3) + 1,
-      negative: Math.floor(Math.random() * 2),
-    }));
-  }, []);
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay() + 1); // Start from Monday
 
-  const insights = [
+    return days.map((day, index) => {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(weekStart.getDate() + index);
+      
+      const dayMoods = moodHistory.filter(entry => {
+        const entryDate = new Date(entry.timestamp);
+        return entryDate.toDateString() === dayDate.toDateString();
+      });
+
+      const positive = dayMoods.filter(m => ['happy', 'calm', 'energetic'].includes(m.mood)).length;
+      const neutral = dayMoods.filter(m => m.mood === 'neutral').length;
+      const negative = dayMoods.filter(m => ['tired', 'anxious', 'sad'].includes(m.mood)).length;
+
+      return { day, positive, neutral, negative };
+    });
+  }, [moodHistory]);
+
+  const totalEntries = moodDistribution.reduce((acc, curr) => acc + curr.value, 0);
+
+  const defaultInsights: Insight[] = [
     {
       icon: TrendingUp,
       title: "Peak Energy",
-      description: "You tend to feel most energetic on Wednesday mornings",
+      description: moodHistory.length > 0 
+        ? `Your most common mood is ${moodHistory.reduce((acc, m) => {
+            acc[m.mood] = (acc[m.mood] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)[Object.entries(moodHistory.reduce((acc, m) => {
+            acc[m.mood] = (acc[m.mood] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>)).sort((a, b) => b[1] - a[1])[0]?.[0]] || 'neutral'}`
+        : "Log moods to see patterns",
       color: "text-primary"
     },
     {
       icon: Calendar,
-      title: "Pattern Detected",
-      description: "Team meetings often correlate with anxious feelings",
+      title: "This Week",
+      description: `You've logged ${totalEntries} mood entries this week`,
       color: "text-accent"
     },
     {
       icon: Target,
-      title: "Improvement",
-      description: "Your 'calm' entries increased by 25% this week",
+      title: "Quests Completed",
+      description: `${questCount} cognitive quests completed`,
       color: "text-primary"
     },
   ];
-
-  const totalEntries = moodDistribution.reduce((acc, curr) => acc + curr.value, 0);
 
   return (
     <motion.div
@@ -88,8 +187,8 @@ export function WeeklyReport() {
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Entries', value: totalEntries, icon: '📝' },
-          { label: 'Quests', value: 12, icon: '🎮' },
-          { label: 'Releases', value: 8, icon: '🍃' },
+          { label: 'Quests', value: questCount, icon: '🎮' },
+          { label: 'Releases', value: releaseCount, icon: '🍃' },
         ].map((stat, index) => (
           <motion.div
             key={stat.label}
@@ -114,41 +213,47 @@ export function WeeklyReport() {
           <CardTitle className="text-lg">Mood Distribution</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center gap-4">
-            <div className="w-32 h-32">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={moodDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={30}
-                    outerRadius={50}
-                    paddingAngle={2}
-                    dataKey="value"
-                  >
-                    {moodDistribution.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
+          {moodDistribution.length > 0 ? (
+            <div className="flex items-center gap-4">
+              <div className="w-32 h-32">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={moodDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={30}
+                      outerRadius={50}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {moodDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 space-y-2">
+                {moodDistribution.slice(0, 4).map((item) => (
+                  <div key={item.name} className="flex items-center gap-2">
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <span className="text-sm capitalize flex-1">{item.emoji} {item.name}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {Math.round((item.value / totalEntries) * 100)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="flex-1 space-y-2">
-              {moodDistribution.slice(0, 4).map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm capitalize flex-1">{item.emoji} {item.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {Math.round((item.value / totalEntries) * 100)}%
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No mood data yet. Start logging your moods!
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -181,17 +286,20 @@ export function WeeklyReport() {
                   stackId="a" 
                   fill="hsl(var(--primary))" 
                   radius={[4, 4, 0, 0]}
+                  name="Positive"
                 />
                 <Bar 
                   dataKey="neutral" 
                   stackId="a" 
-                  fill="hsl(var(--muted))" 
+                  fill="hsl(var(--muted))"
+                  name="Neutral"
                 />
                 <Bar 
                   dataKey="negative" 
                   stackId="a" 
                   fill="hsl(var(--destructive) / 0.5)" 
                   radius={[4, 4, 0, 0]}
+                  name="Needs Care"
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -208,21 +316,27 @@ export function WeeklyReport() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {insights.map((insight, index) => (
-            <motion.div
-              key={insight.title}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.15 }}
-              className="flex items-start gap-3 p-3 rounded-xl bg-background/50"
-            >
-              <insight.icon className={`w-5 h-5 ${insight.color} mt-0.5`} />
-              <div>
-                <p className="font-medium text-sm">{insight.title}</p>
-                <p className="text-xs text-muted-foreground">{insight.description}</p>
-              </div>
-            </motion.div>
-          ))}
+          {loadingInsights ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            (aiInsights.length > 0 ? aiInsights : defaultInsights).map((insight, index) => (
+              <motion.div
+                key={insight.title}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.15 }}
+                className="flex items-start gap-3 p-3 rounded-xl bg-background/50"
+              >
+                <insight.icon className={`w-5 h-5 ${insight.color} mt-0.5`} />
+                <div>
+                  <p className="font-medium text-sm">{insight.title}</p>
+                  <p className="text-xs text-muted-foreground">{insight.description}</p>
+                </div>
+              </motion.div>
+            ))
+          )}
         </CardContent>
       </Card>
     </motion.div>

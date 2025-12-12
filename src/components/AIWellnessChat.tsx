@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageCircle, Send, Bot, User, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,12 +24,19 @@ export function AIWellnessChat() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return;
@@ -95,11 +101,11 @@ export function AIWellnessChat() {
             initial={{ opacity: 0, y: 100, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 100, scale: 0.9 }}
-            className="fixed bottom-6 right-6 z-50 w-[350px] max-w-[calc(100vw-3rem)]"
+            className="fixed bottom-20 right-4 left-4 sm:left-auto sm:right-6 sm:w-[380px] z-50 max-h-[70vh] flex flex-col"
           >
-            <Card className="glass border-0 overflow-hidden shadow-2xl">
+            <Card className="glass border-0 overflow-hidden shadow-2xl flex flex-col h-full">
               {/* Header */}
-              <div className="gradient-primary p-4 flex items-center justify-between">
+              <div className="gradient-primary p-4 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-full bg-background/20">
                     <Bot className="w-5 h-5 text-primary-foreground" />
@@ -120,7 +126,7 @@ export function AIWellnessChat() {
               </div>
 
               {/* Messages */}
-              <ScrollArea className="h-[350px] p-4" ref={scrollRef}>
+              <ScrollArea className="flex-1 p-4 max-h-[300px]" ref={scrollRef}>
                 <div className="space-y-4">
                   {messages.map((message) => (
                     <motion.div
@@ -130,7 +136,7 @@ export function AIWellnessChat() {
                       className={`flex gap-2 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {message.role === 'assistant' && (
-                        <div className="p-2 rounded-full bg-primary/10 h-fit">
+                        <div className="p-2 rounded-full bg-primary/10 h-fit shrink-0">
                           <Bot className="w-4 h-4 text-primary" />
                         </div>
                       )}
@@ -142,7 +148,7 @@ export function AIWellnessChat() {
                         {message.content}
                       </div>
                       {message.role === 'user' && (
-                        <div className="p-2 rounded-full bg-primary/10 h-fit">
+                        <div className="p-2 rounded-full bg-primary/10 h-fit shrink-0">
                           <User className="w-4 h-4 text-primary" />
                         </div>
                       )}
@@ -166,23 +172,25 @@ export function AIWellnessChat() {
               </ScrollArea>
 
               {/* Input */}
-              <CardContent className="p-3 border-t border-border/50">
+              <CardContent className="p-3 border-t border-border/50 shrink-0">
                 <form 
                   onSubmit={(e) => { e.preventDefault(); sendMessage(); }}
                   className="flex gap-2"
                 >
-                  <Input
+                  <input
+                    ref={inputRef}
+                    type="text"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     placeholder="How are you feeling?"
-                    className="flex-1 bg-muted/50 border-0"
+                    className="flex-1 px-4 py-2 rounded-xl bg-muted/50 border-0 outline-none focus:ring-2 focus:ring-primary text-sm"
                     disabled={isLoading}
                   />
                   <Button 
                     type="submit" 
                     size="icon" 
                     disabled={!input.trim() || isLoading}
-                    className="gradient-primary border-0"
+                    className="gradient-primary border-0 shrink-0"
                   >
                     <Send className="w-4 h-4" />
                   </Button>

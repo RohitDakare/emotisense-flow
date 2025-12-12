@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Calendar, Heart, Gamepad2, BarChart3, Plus, Sparkles, LogOut, Bell, Castle } from 'lucide-react';
+import { Calendar, Heart, Gamepad2, BarChart3, Sparkles, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useMood, moodEmojis, MoodType } from '@/lib/mood-context';
@@ -14,6 +14,7 @@ import { WellnessReminders } from './WellnessReminders';
 import { AmbientSoundPlayer } from './AmbientSoundPlayer';
 import { AIWellnessChat } from './AIWellnessChat';
 import { AIJournalAnalysis } from './AIJournalAnalysis';
+import { toast } from 'sonner';
 
 
 type View = 'home' | 'calendar' | 'heal' | 'quests' | 'report' | 'journal';
@@ -58,7 +59,6 @@ export function Dashboard() {
   }, [healSessions]);
 
   const addEvent = (event: Omit<CalendarEvent, 'id'>) => {
-    // Events are now managed in CalendarView with Supabase
     const newEvent = { ...event, id: Date.now().toString() };
     setEvents(prev => [...prev, newEvent]);
   };
@@ -165,7 +165,7 @@ interface HomeViewProps {
 }
 
 function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeViewProps) {
-  const { currentMood, moodHistory } = useMood();
+  const { currentMood, moodHistory, addMoodEntry } = useMood();
 
   const todayMoods = moodHistory.filter(entry => {
     const today = new Date();
@@ -175,6 +175,13 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
 
   const totalXp = todayMoods.length * 10 + healSessions * 20 + questsCompleted * 15;
   const level = Math.floor(totalXp / 100) + 1;
+
+  const handleQuickMood = async (mood: MoodType) => {
+    await addMoodEntry(mood, undefined, 'quick-select');
+    toast.success(`Mood updated to ${mood}`, {
+      description: `${moodEmojis[mood]} Your mood has been recorded`
+    });
+  };
 
   return (
     <motion.div
@@ -191,10 +198,50 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
             You've logged {todayMoods.length} mood{todayMoods.length !== 1 ? 's' : ''} today.
             {currentMood === 'happy' && ' Keep spreading that joy!'}
             {currentMood === 'tired' && ' Take it easy today.'}
-            {currentMood === 'anxious' && ' Let\'s find some calm together.'}
+            {currentMood === 'anxious' && " Let's find some calm together."}
             {currentMood === 'calm' && ' Perfect state for productivity.'}
             {currentMood === 'neutral' && ' Ready for whatever comes your way.'}
           </p>
+        </CardContent>
+      </Card>
+
+      {/* Recapture Mood Section */}
+      <Card className="glass border-0 overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              <h3 className="font-medium">How are you feeling now?</h3>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                localStorage.removeItem('lastMoodScan');
+                window.location.reload();
+              }}
+              className="text-xs"
+            >
+              Full Scan
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(moodEmojis) as MoodType[]).map((mood) => (
+              <motion.button
+                key={mood}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => handleQuickMood(mood)}
+                className={`px-3 py-2 rounded-xl text-sm flex items-center gap-1.5 transition-all ${
+                  currentMood === mood
+                    ? 'bg-primary text-primary-foreground ring-2 ring-primary'
+                    : 'bg-muted/50 hover:bg-muted'
+                }`}
+              >
+                <span className="text-lg">{moodEmojis[mood]}</span>
+                <span className="capitalize">{mood}</span>
+              </motion.button>
+            ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -279,6 +326,11 @@ function HomeView({ events, onNavigate, questsCompleted, healSessions }: HomeVie
               </span>
             </motion.div>
           ))}
+          {events.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No events scheduled. Add some in Calendar!
+            </p>
+          )}
         </CardContent>
       </Card>
 

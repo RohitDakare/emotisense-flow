@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Sparkles, ChevronLeft, ChevronRight, Edit2, Trash2 } from 'lucide-react';
+import { Plus, X, Sparkles, ChevronLeft, ChevronRight, Edit2, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -54,6 +54,7 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
   const [predictedMood, setPredictedMood] = useState<MoodType>('neutral');
   const [dbEvents, setDbEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
+  const [isPredictingMood, setIsPredictingMood] = useState(false);
 
   // Fetch events from database
   useEffect(() => {
@@ -139,6 +140,32 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
       toast.success('Event deleted');
     } catch (error) {
       toast.error('Failed to delete event');
+    }
+  };
+
+  // AI mood prediction based on event title and time
+  const predictMoodWithAI = async (eventTitle: string, eventTime: string) => {
+    if (!eventTitle.trim()) return;
+    setIsPredictingMood(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-mood', {
+        body: {
+          userInput: `Predict the likely mood for this calendar event. Title: "${eventTitle}", Time: "${eventTime || 'unspecified'}". Respond with just one word from: happy, calm, tired, anxious, neutral, sad, energetic`,
+          analysisType: 'chat'
+        }
+      });
+      
+      if (!error && data?.response) {
+        const moodMatch = data.response.toLowerCase().match(/\b(happy|calm|tired|anxious|neutral|sad|energetic)\b/);
+        if (moodMatch) {
+          setPredictedMood(moodMatch[1] as MoodType);
+          toast.success(`AI predicted: ${moodMatch[1]}`, { description: 'Based on event context' });
+        }
+      }
+    } catch (err) {
+      console.error('Mood prediction failed:', err);
+    } finally {
+      setIsPredictingMood(false);
     }
   };
 
