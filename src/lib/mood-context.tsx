@@ -1,10 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import api from './api';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
 export type MoodType = 'happy' | 'calm' | 'tired' | 'anxious' | 'neutral' | 'sad' | 'energetic';
 
 interface MoodEntry {
+  id: string;
   mood: MoodType;
   timestamp: Date;
   note?: string;
@@ -14,8 +15,9 @@ interface MoodContextType {
   currentMood: MoodType;
   setCurrentMood: (mood: MoodType) => void;
   moodHistory: MoodEntry[];
-  addMoodEntry: (mood: MoodType, note?: string) => void;
+  addMoodEntry: (mood: MoodType, note?: string, detectedBy?: string) => Promise<void>;
   theme: string;
+  refreshMoods: () => Promise<void>;
 }
 
 const moodToTheme: Record<MoodType, string> = {
@@ -37,34 +39,71 @@ export function MoodProvider({ children }: { children: ReactNode }) {
 
   const theme = moodToTheme[currentMood];
 
-  useEffect(() => {
-    if (user) {
-      api.get('/moods').then((response) => {
-        setMoodHistory(response.data);
-      });
+  const fetchMoods = async () => {
+    if (!user) return;
+    
+    const { data, error } = await supabase
+      .from('mood_entries')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      const entries: MoodEntry[] = data.map((entry) => ({
+        id: entry.id,
+        mood: entry.mood as MoodType,
+        timestamp: new Date(entry.created_at),
+        note: entry.notes || undefined,
+      }));
+      setMoodHistory(entries);
+      
+      // Set current mood to the most recent entry
+      if (entries.length > 0) {
+        setCurrentMood(entries[0].mood);
+      }
     }
+  };
+
+  useEffect(() => {
+    fetchMoods();
   }, [user]);
 
   useEffect(() => {
     document.body.className = theme;
   }, [theme]);
 
-  const addMoodEntry = (mood: MoodType, note?: string) => {
-    if (user) {
-      const entry = {
+  const addMoodEntry = async (mood: MoodType, note?: string, detectedBy?: string) => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('mood_entries')
+      .insert({
+        user_id: user.id,
         mood,
-        note,
-        userId: user.id,
+        notes: note || null,
+        detected_by: detectedBy || 'manual',
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      const newEntry: MoodEntry = {
+        id: data.id,
+        mood: data.mood as MoodType,
+        timestamp: new Date(data.created_at),
+        note: data.notes || undefined,
       };
-      api.post('/moods', entry).then((response) => {
-        setMoodHistory((prev) => [...prev, response.data]);
-        setCurrentMood(mood);
-      });
+      setMoodHistory((prev) => [newEntry, ...prev]);
+      setCurrentMood(mood);
     }
   };
 
+  const refreshMoods = async () => {
+    await fetchMoods();
+  };
+
   return (
-    <MoodContext.Provider value={{ currentMood, setCurrentMood, moodHistory, addMoodEntry, theme }}>
+    <MoodContext.Provider value={{ currentMood, setCurrentMood, moodHistory, addMoodEntry, theme, refreshMoods }}>
       {children}
     </MoodContext.Provider>
   );
