@@ -55,7 +55,7 @@ const Index = () => {
               animate={{ opacity: [0.5, 1, 0.5] }}
               transition={{ duration: 1.5, repeat: Infinity }}
             >
-              MindFlow
+              MendMind
             </motion.h1>
             <p className="text-muted-foreground text-sm mt-2">Preparing your wellness space...</p>
           </motion.div>
