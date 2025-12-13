@@ -104,7 +104,7 @@ export function Dashboard() {
       >
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div>
-            <h1 className="text-2xl font-bold text-gradient">MindFlow</h1>
+            <h1 className="text-2xl font-bold text-gradient">MendMind</h1>
             <p className="text-sm text-muted-foreground">
               Welcome, {user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Wellness Seeker'}
             </p>
