@@ -62,12 +62,33 @@ serve(async (req) => {
         },
         { role: "user", content: userInput }
       ];
+    } else if (analysisType === "event_mood") {
+      // Predict mood based on event title and time
+      messages = [
+        {
+          role: "system",
+          content: `You are an AI that predicts how an event might affect someone's mood based on the event title and scheduled time.
+          Consider these factors:
+          - Event type (work meeting, exercise, social, medical, etc.)
+          - Time of day (morning events vs late night)
+          - Day of week context
+          - Common emotional associations with activities
+          
+          Respond with ONLY a JSON object in this exact format:
+          {
+            "mood": "happy" | "calm" | "tired" | "anxious" | "neutral" | "sad" | "energetic",
+            "confidence": 0-100,
+            "reason": "Brief explanation of why this event might cause this mood"
+          }`
+        },
+        { role: "user", content: userInput }
+      ];
     } else if (analysisType === "chat") {
       // AI wellness chat
       messages = [
         {
           role: "system",
-          content: `You are MindPal, a warm and supportive AI wellness companion. You help users with:
+          content: `You are MendMind, a warm and supportive AI wellness companion. You help users with:
           - Emotional support and validation
           - Mindfulness and breathing exercises
           - Cognitive reframing of negative thoughts

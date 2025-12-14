@@ -143,27 +143,47 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
     }
   };
 
-  // AI mood prediction based on event title and time
+  // AI mood prediction based on event title and time - analyzes the event, not the user
   const predictMoodWithAI = async (eventTitle: string, eventTime: string) => {
-    if (!eventTitle.trim()) return;
+    if (!eventTitle.trim()) {
+      toast.error('Please enter an event title first');
+      return;
+    }
     setIsPredictingMood(true);
     try {
+      // Get day of week for context
+      const dayOfWeek = selectedDate ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][selectedDate.getDay()] : 'unknown';
+      
       const { data, error } = await supabase.functions.invoke('analyze-mood', {
         body: {
-          userInput: `Predict the likely mood for this calendar event. Title: "${eventTitle}", Time: "${eventTime || 'unspecified'}". Respond with just one word from: happy, calm, tired, anxious, neutral, sad, energetic`,
-          analysisType: 'chat'
+          userInput: `Analyze this calendar event and predict what mood it might cause:
+Event Title: "${eventTitle}"
+Scheduled Time: ${eventTime || 'not specified'}
+Day: ${dayOfWeek}
+
+Consider: Is this a stressful event (like a deadline, exam, medical appointment)? A relaxing activity (yoga, vacation)? A social event? A work task? An early morning or late night event?`,
+          analysisType: 'event_mood'
         }
       });
       
-      if (!error && data?.response) {
+      if (error) throw error;
+      
+      if (data?.mood) {
+        setPredictedMood(data.mood as MoodType);
+        toast.success(`AI predicted: ${data.mood}`, { 
+          description: data.reason || 'Based on event analysis' 
+        });
+      } else if (data?.response) {
+        // Fallback for text response
         const moodMatch = data.response.toLowerCase().match(/\b(happy|calm|tired|anxious|neutral|sad|energetic)\b/);
         if (moodMatch) {
           setPredictedMood(moodMatch[1] as MoodType);
-          toast.success(`AI predicted: ${moodMatch[1]}`, { description: 'Based on event context' });
+          toast.success(`AI predicted: ${moodMatch[1]}`);
         }
       }
     } catch (err) {
       console.error('Mood prediction failed:', err);
+      toast.error('Failed to predict mood');
     } finally {
       setIsPredictingMood(false);
     }
