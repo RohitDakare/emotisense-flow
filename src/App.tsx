@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import SignUp from "./pages/SignUp";
+import Landing from "./pages/Landing";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -23,7 +24,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!user) {
-    return <Navigate to="/auth" replace />;
+    return <Navigate to="/landing" replace />;
   }
 
   return <>{children}</>;
@@ -42,6 +43,7 @@ function AppRoutes() {
 
   return (
     <Routes>
+      <Route path="/landing" element={user ? <Navigate to="/" replace /> : <Landing />} />
       <Route path="/auth" element={user ? <Navigate to="/" replace /> : <Auth />} />
       <Route path="/signup" element={user ? <Navigate to="/" replace /> : <SignUp />} />
       <Route
