@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, X, Sparkles, ChevronLeft, ChevronRight, Edit2, Trash2, Loader2 } from 'lucide-react';
+import { Plus, X, Sparkles, ChevronLeft, ChevronRight, Edit2, Trash2, Loader2, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,16 @@ const moodTags: Record<MoodType, string> = {
   energetic: 'High Energy'
 };
 
+const moodColors: Record<MoodType, string> = {
+  happy: 'hsl(48, 96%, 53%)',
+  calm: 'hsl(142, 76%, 36%)',
+  neutral: 'hsl(215, 16%, 47%)',
+  tired: 'hsl(262, 83%, 58%)',
+  anxious: 'hsl(0, 84%, 60%)',
+  sad: 'hsl(217, 91%, 60%)',
+  energetic: 'hsl(25, 95%, 53%)'
+};
+
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -55,6 +65,7 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
   const [dbEvents, setDbEvents] = useState<CalendarEvent[]>([]);
   const [viewMode, setViewMode] = useState<'month' | 'year'>('month');
   const [isPredictingMood, setIsPredictingMood] = useState(false);
+  const [moodStats, setMoodStats] = useState<Record<MoodType, number>>({} as Record<MoodType, number>);
 
   // Fetch events from database
   useEffect(() => {
@@ -67,14 +78,22 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
         .eq('user_id', user.id);
       
       if (!error && data) {
-        setDbEvents(data.map(e => ({
+        const mappedEvents = data.map(e => ({
           id: e.id,
           title: e.title,
           time: e.event_time || '',
           date: e.event_date,
           predictedMood: (e.predicted_mood || 'neutral') as MoodType,
           tag: moodTags[(e.predicted_mood || 'neutral') as MoodType]
-        })));
+        }));
+        setDbEvents(mappedEvents);
+        
+        // Calculate mood statistics
+        const stats: Record<MoodType, number> = {} as Record<MoodType, number>;
+        mappedEvents.forEach(e => {
+          stats[e.predictedMood] = (stats[e.predictedMood] || 0) + 1;
+        });
+        setMoodStats(stats);
       }
     };
     
@@ -144,11 +163,8 @@ export function CalendarView({ events, onAddEvent, onUpdateEvent, onDeleteEvent 
   };
 
   // AI mood prediction based on event title and time - analyzes the event, not the user
-  const predictMoodWithAI = async (eventTitle: string, eventTime: string) => {
-    if (!eventTitle.trim()) {
-      toast.error('Please enter an event title first');
-      return;
-    }
+  const predictMoodWithAI = useCallback(async (eventTitle: string, eventTime: string) => {
+    if (!eventTitle.trim() || eventTitle.length < 3) return;
     setIsPredictingMood(true);
     try {
       // Get day of week for context
@@ -183,9 +199,15 @@ Consider: Is this a stressful event (like a deadline, exam, medical appointment)
       }
     } catch (err) {
       console.error('Mood prediction failed:', err);
-      toast.error('Failed to predict mood');
     } finally {
       setIsPredictingMood(false);
+    }
+  }, [selectedDate]);
+
+  // Auto-predict mood when title changes (debounced on blur)
+  const handleTitleBlur = () => {
+    if (title.trim().length >= 3 && !editingEvent) {
+      predictMoodWithAI(title, time);
     }
   };
 
@@ -412,6 +434,51 @@ Consider: Is this a stressful event (like a deadline, exam, medical appointment)
         </div>
       </div>
 
+      {/* Mood Pattern Visualization */}
+      {Object.keys(moodStats).length > 0 && (
+        <Card className="glass border-0">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="w-4 h-4 text-primary" />
+              <h3 className="font-medium">Mood Patterns</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(moodStats).map(([mood, count]) => (
+                <div 
+                  key={mood}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg"
+                  style={{ backgroundColor: `${moodColors[mood as MoodType]}20` }}
+                >
+                  <span className="text-lg">{moodEmojis[mood as MoodType]}</span>
+                  <div>
+                    <p className="text-xs capitalize font-medium">{mood}</p>
+                    <p className="text-xs text-muted-foreground">{count} events</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Mood distribution bar */}
+            <div className="mt-3 h-2 rounded-full overflow-hidden flex">
+              {Object.entries(moodStats).map(([mood, count]) => {
+                const total = Object.values(moodStats).reduce((a, b) => a + b, 0);
+                const percentage = (count / total) * 100;
+                return (
+                  <div
+                    key={mood}
+                    className="h-full"
+                    style={{ 
+                      width: `${percentage}%`,
+                      backgroundColor: moodColors[mood as MoodType]
+                    }}
+                    title={`${mood}: ${count} events (${Math.round(percentage)}%)`}
+                  />
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Calendar Grid */}
       <Card className="glass border-0">
         <CardContent className="p-4">
@@ -542,13 +609,24 @@ Consider: Is this a stressful event (like a deadline, exam, medical appointment)
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="title">Event Title</Label>
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="What's happening?"
-                    className="glass border-0 mt-1"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      onBlur={handleTitleBlur}
+                      placeholder="What's happening?"
+                      className="glass border-0 mt-1 pr-10"
+                    />
+                    {isPredictingMood && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 mt-0.5">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    AI will auto-predict mood when you finish typing
+                  </p>
                 </div>
 
                 <div>
